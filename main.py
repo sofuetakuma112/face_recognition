@@ -83,10 +83,10 @@ class Face_recognition:
                         self.check_face_match(captured_encodings)
                         break
 
-                    # cv2.imshow('camera', stream.array)
+                    cv2.imshow('camera', stream.array)
 
-                    # stream.seek(0)
-                    # stream.truncate()
+                    stream.seek(0)
+                    stream.truncate()
 
                     if cv2.waitKey(1) > 0:
                         break
