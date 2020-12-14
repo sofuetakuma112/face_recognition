@@ -7,6 +7,7 @@ import picamera.array
 import cv2
 import os
 import glob
+import pickle
 
 class Face_recognition:
     def __init__(self):
@@ -15,17 +16,24 @@ class Face_recognition:
         self.captured_encodings = None
         self.matches = None
         self.img_list = glob.glob("register_face/*")
+        old_img_list = None
         # エンコーディングが既にあれば読み込み、無ければ作成する
-        if (os.path.exists('face_recognition_encodings.csv')):
+        if (os.path.exists('face_recognition_encodings.csv')):  # 二回目以降
             self.loaded_encodings = np.loadtxt('face_recognition_encodings.csv')
-            # 既存のエンコーディングの画像枚数とフォルダ内の画像枚数が一致しない場合、再度エンコードする
-            if (len(self.loaded_encodings) != len(self.img_list)):
+            read_file = open('register_face_path_list.txt', 'rb')
+            old_img_list = pickle.load(read_file)
+            # 既存のエンコーディングの画像枚数とフォルダ内の画像が一致しない場合、再度エンコードする
+            if (old_img_list != self.img_list):
                 print('フォルダに新規画像が追加されたので再度エンコードします')
+                write_file = open('register_face_path_list.txt', 'wb')
+                pickle.dump(self.img_list, write_file)
                 self.resize()  # 解像度が大きい画像をリサイズする
                 self.encode()  # フォルダ内の画像をエンコードする
-        else:
+        else:  # 初回
             # register_faceフォルダから画像を読み込みエンコーディングを作成
             print('csvファイルが見つからないので作成します')
+            write_file = open('register_face_path_list.txt', 'wb')
+            pickle.dump(self.img_list, write_file)
             self.resize()
             self.encode()
 
@@ -167,6 +175,11 @@ class Face_recognition:
 
 if __name__ == '__main__':
     face = Face_recognition()
-    face.caputure()  # 撮影待ちになる
-    face.check_face_match()  # 検証
-    face.pass_result_to_arduino()  # 結果表示
+    count = 0
+    while True:
+        face.caputure()  # 撮影待ちになる
+        face.check_face_match()  # 検証
+        face.pass_result_to_arduino()  # 結果表示
+        count += 1
+        print('{}回目の認証成功'.format(str(count)))
+        
