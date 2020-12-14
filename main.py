@@ -12,43 +12,27 @@ class Face_recognition:
     def __init__(self):
         self.max_pixel = 320000
         self.resize_width = 480
+        self.captured_encodings = None
+        self.matches = None
+        self.img_list = glob.glob("register_face/*")
         # エンコーディングが既にあれば読み込み、無ければ作成する
         if (os.path.exists('face_recognition_encodings.csv')):
             self.loaded_encodings = np.loadtxt('face_recognition_encodings.csv')
-            img_list = glob.glob("register_face/*")
             # 既存のエンコーディングの画像枚数とフォルダ内の画像枚数が一致しない場合、再度エンコードする
-            print(len(self.loaded_encodings))
-            print(len(img_list))
-            if (len(self.loaded_encodings) == len(img_list)):
+            if (len(self.loaded_encodings) != len(self.img_list)):
                 print('フォルダに新規画像が追加されたので再度エンコードします')
-                # 解像度が大きい画像をリサイズする
-                big_size_img_path_list = self.check_img_size(img_list)  # 解像度が大きい画像のみのpathの配列
-                print(big_size_img_path_list)
-                resized_imgs = []
-                if (len(big_size_img_path_list) != 0):
-                    for big_img_path in big_size_img_path_list:  # リサイズしてpathとimgの辞書にする
-                        resized_img = self.resize_img(big_img_path, self.resize_width)
-                        resized_imgs.append({'path': big_img_path, 'img': resized_img})
-                    self.overwrite_img(resized_imgs)  # 辞書を元に画像を上書き
-                print('リサイズ終了')
-                # フォルダ内の画像をエンコードする
-                loaded_registered_imgs = self.load_registered_img(img_list)
-                img_locs = self.detect_human_face(loaded_registered_imgs)
-                self.loaded_encodings = self.encode_img(loaded_registered_imgs, img_locs)  # [array([]), array([]), array([]), ...]
-                self.save_registered_encodings(self.loaded_encodings)
-                self.loaded_encodings = np.loadtxt('face_recognition_encodings.csv')  # [[], [], [], ...]
+                self.resize()  # 解像度が大きい画像をリサイズする
+                self.encode()  # フォルダ内の画像をエンコードする
         else:
             # register_faceフォルダから画像を読み込みエンコーディングを作成
-            print('csvファイルがないのでエンコードし作成します')
-            loaded_registered_imgs = self.load_registered_img(img_list)
-            img_locs = self.detect_human_face(loaded_registered_imgs)
-            self.loaded_encodings = self.encode_img(loaded_registered_imgs, img_locs)
-            self.save_registered_encodings(self.loaded_encodings)
+            print('csvファイルが見つからないので作成します')
+            self.resize()
+            self.encode()
 
 
-    def load_registered_img(self, img_path):
+    def load_registered_img(self):
         loaded_register_imgs = []
-        for path in img_path:
+        for path in self.img_list:
             img = fr.load_image_file(path)
             loaded_register_imgs.append(img)
         return loaded_register_imgs
@@ -69,16 +53,20 @@ class Face_recognition:
             encodings.append(encoding)
         return encodings
 
+    def encode(self):
+        loaded_registered_imgs = self.load_registered_img()
+        img_locs = self.detect_human_face(loaded_registered_imgs)
+        self.loaded_encodings = self.encode_img(loaded_registered_imgs, img_locs)  # [array([]), array([]), array([]), ...]
+        self.save_registered_encodings(self.loaded_encodings)
+        self.loaded_encodings = np.loadtxt('face_recognition_encodings.csv')  # [[], [], [], ...]
+
     def save_registered_encodings(self, encodings):
         np.savetxt('face_recognition_encodings.csv', encodings)
 
 
-    def check_face_match(self, captured_encodings):
-        print('認証中')
-        print(self.loaded_encodings)
-        # print(captured_encodings)
-        matches = fr.compare_faces(self.loaded_encodings, captured_encodings)
-        print(matches)
+    def check_face_match(self):
+        print('認証')
+        self.matches = fr.compare_faces(self.loaded_encodings, self.captured_encodings)
 
 
     def caputure(self):
@@ -101,16 +89,13 @@ class Face_recognition:
                         img_array = []
                         img_array.append(stream.array)
                         # stream.arrayが画像ファイルなのでこれをエンコードしてmatchesに渡す
-                        detected_captured_face = self.detect_human_face(img_array)
-                        print(detected_captured_face)  # [[(187, 282, 295, 175)]]
-                        captured_encodings = None
+                        detected_captured_face = self.detect_human_face(img_array)  # [[(187, 282, 295, 175)]]
                         try:
-                            captured_encodings = self.encode_img(img_array, detected_captured_face)
+                            self.captured_encodings = self.encode_img(img_array, detected_captured_face)
                         except:
                             print('顔検出失敗')
                             cv2.destroyAllWindows()
                             continue
-                        self.check_face_match(captured_encodings)
                         break
 
                     cv2.imshow('camera', stream.array)
@@ -123,15 +108,27 @@ class Face_recognition:
         cv2.destroyAllWindows()
 
 
-    def check_img_size(self, img_list):
+    def resize(self):
+        big_size_img_path_list = self.check_img_size()  # 解像度が大きい画像のみのpathの配列
+        resized_imgs = []
+        if (len(big_size_img_path_list) != 0):
+            print('解像度が大きい画像があるのでリサイズします')
+            for big_img_path in big_size_img_path_list:  # リサイズしてpathとimgの辞書にする
+                resized_img = self.resize_img(big_img_path, self.resize_width)
+                resized_imgs.append({'path': big_img_path, 'img': resized_img})
+            self.overwrite_img(resized_imgs)  # 辞書を元に画像を上書き
+        else:
+            print('リサイズが必要な画像はありませんでした')
+
+
+    def check_img_size(self):
         """
         解像度が大きい画像のpathを配列で返す
         """
         big_size_img_path = []
-        for path in img_list:
+        for path in self.img_list:
             img = cv2.imread(path)
             h, w = img.shape[:2]
-            print(h, w)
             if (h * w >= self.max_pixel):
                 big_size_img_path.append(path)
 
@@ -161,6 +158,15 @@ class Face_recognition:
             cv2.imwrite(path, img)
 
 
+    def pass_result_to_arduino(self):
+        if (True in self.matches):
+            print('OK')
+        else:
+            print('NO')
+
+
 if __name__ == '__main__':
     face = Face_recognition()
     face.caputure()  # 撮影待ちになる
+    face.check_face_match()  # 検証
+    face.pass_result_to_arduino()  # 結果表示
