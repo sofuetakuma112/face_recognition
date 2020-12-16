@@ -8,6 +8,8 @@ import cv2
 import os
 import glob
 import pickle
+import serial
+import time
 
 class Face_recognition:
     def __init__(self):
@@ -19,10 +21,11 @@ class Face_recognition:
         old_img_list = None
         # エンコーディングが既にあれば読み込み、無ければ作成する
         if (os.path.exists('face_recognition_encodings.csv')):  # 二回目以降
+            print('エンコーディング読み込み')
             self.loaded_encodings = np.loadtxt('face_recognition_encodings.csv')
             read_file = open('register_face_path_list.txt', 'rb')
             old_img_list = pickle.load(read_file)
-            # 既存のエンコーディングの画像枚数とフォルダ内の画像が一致しない場合、再度エンコードする
+            # 現在のファイル名と前回のエンコード時のファイル名が一致しないなら再度エンコード
             if (old_img_list != self.img_list):
                 print('フォルダに新規画像が追加されたので再度エンコードします')
                 write_file = open('register_face_path_list.txt', 'wb')
@@ -39,6 +42,9 @@ class Face_recognition:
 
 
     def load_registered_img(self):
+        """
+        register_faceフォルダ内のファイルを読み込む
+        """
         loaded_register_imgs = []
         for path in self.img_list:
             img = fr.load_image_file(path)
@@ -47,13 +53,22 @@ class Face_recognition:
 
 
     def detect_human_face(self, face_imgs):
+        """
+        画像から顔部分を検出する
+        """
         face_locs = []
         for img in face_imgs:
-            loc = fr.face_locations(img, model="hog")
-            face_locs.append(loc)
+            loc = fr.face_locations(img, model="hog")  # 顔が検出できない画像は loc = [] になる
+            if (len(loc) != 0):
+                face_locs.append(loc)
+            else:
+                print('顔が検出できませんでした')
         return face_locs
 
     def encode_img(self, face_imgs, face_locs):
+        """
+        画像と検出した顔部分のデータから特徴量を求める
+        """
         print('エンコード')
         encodings = []
         for img, loc in zip(face_imgs, face_locs):
@@ -69,6 +84,9 @@ class Face_recognition:
         self.loaded_encodings = np.loadtxt('face_recognition_encodings.csv')  # [[], [], [], ...]
 
     def save_registered_encodings(self, encodings):
+        """
+        register_face内の特徴量のデータを保存する
+        """
         np.savetxt('face_recognition_encodings.csv', encodings)
 
 
@@ -78,6 +96,9 @@ class Face_recognition:
 
 
     def caputure(self):
+        """
+        PiCameraを起動して人の顔を検知したらシャッターを切る
+        """
         # カメラ初期化
         while True:
             with picamera.PiCamera() as camera:
@@ -106,7 +127,7 @@ class Face_recognition:
                             continue
                         break
 
-                    cv2.imshow('camera', stream.array)
+                    # cv2.imshow('camera', stream.array)
 
                     stream.seek(0)
                     stream.truncate()
@@ -117,6 +138,9 @@ class Face_recognition:
 
 
     def resize(self):
+        """
+        ピクセルサイズが大きい画像をリサイズする
+        """
         big_size_img_path_list = self.check_img_size()  # 解像度が大きい画像のみのpathの配列
         resized_imgs = []
         if (len(big_size_img_path_list) != 0):
@@ -157,7 +181,7 @@ class Face_recognition:
 
     def overwrite_img(self, resized_img):
         """
-        引数は辞書型
+        prams: 辞書型
         渡された画像の配列を元の画像に上書き保存する
         """
         for i in resized_img:
@@ -167,10 +191,17 @@ class Face_recognition:
 
 
     def pass_result_to_arduino(self):
+        """
+        Arduinoに結果を渡す
+        """
         if (True in self.matches):
             print('OK')
+            with serial.Serial('/dev/ttyACM0', 9600, timeout=0.01) as ser:
+                ser.write('1'.encode('utf-8'))
         else:
             print('NO')
+            with serial.Serial('/dev/ttyACM0', 9600, timeout=0.01) as ser:
+                ser.write('0'.encode('utf-8'))
 
 
 if __name__ == '__main__':
@@ -178,8 +209,11 @@ if __name__ == '__main__':
     count = 0
     while True:
         face.caputure()  # 撮影待ちになる
-        face.check_face_match()  # 検証
+        try:
+            face.check_face_match()
+        except:
+            print('撮影した写真から顔が検出できませんでした')
+            continue
         face.pass_result_to_arduino()  # 結果表示
-        count += 1
-        print('{}回目の認証成功'.format(str(count)))
-        
+        time.sleep(5)
+    print('シャットダウンします')
