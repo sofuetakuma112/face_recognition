@@ -224,5 +224,9 @@ class Face_recognition:
 
 if __name__ == '__main__':
     face = Face_recognition()
-    face.loop()
-    print('シャットダウンします')
+    try:
+        face.loop()
+    except:
+        print('\nシャットダウンします')
+        with serial.Serial('/dev/ttyACM0', 9600, timeout=0.01) as ser:
+                ser.write('3'.encode('utf-8'))
