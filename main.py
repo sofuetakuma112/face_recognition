@@ -61,8 +61,6 @@ class Face_recognition:
             loc = fr.face_locations(img, model="hog")  # 顔が検出できない画像は loc = [] になる
             if (len(loc) != 0):
                 face_locs.append(loc)
-            else:
-                print('顔が検出できませんでした')
         return face_locs
 
     def encode_img(self, face_imgs, face_locs):
@@ -203,17 +201,28 @@ class Face_recognition:
             with serial.Serial('/dev/ttyACM0', 9600, timeout=0.01) as ser:
                 ser.write('0'.encode('utf-8'))
 
+    
+    def loop(self):
+        while True:
+            with serial.Serial('/dev/ttyACM0', 9600, timeout=0.01) as ser:  # 撮影待ちの状態に入ったことをArduinoに送信
+                ser.write('2'.encode('utf-8'))
+
+            self.caputure()  # 撮影待ちになる
+
+            try:
+                self.check_face_match()
+            except:
+                print('撮影した写真から顔が検出できませんでした')
+                continue
+
+            with serial.Serial('/dev/ttyACM0', 9600, timeout=0.01) as ser:  # 撮影終了したことをArduinoに送信
+                ser.write('3'.encode('utf-8'))
+            
+            self.pass_result_to_arduino()  # 結果表示
+            time.sleep(5)
+
 
 if __name__ == '__main__':
     face = Face_recognition()
-    count = 0
-    while True:
-        face.caputure()  # 撮影待ちになる
-        try:
-            face.check_face_match()
-        except:
-            print('撮影した写真から顔が検出できませんでした')
-            continue
-        face.pass_result_to_arduino()  # 結果表示
-        time.sleep(5)
+    face.loop()
     print('シャットダウンします')
